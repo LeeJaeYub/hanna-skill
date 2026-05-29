@@ -13,12 +13,16 @@ Deno.serve(async (request: Request) => {
     const body = await request.json();
     console.log("받은 데이터:", JSON.stringify(body));
 
+    // 오픈빌더는 params, detailParams, clientExtra 세 곳 중 하나에 값을 담아 보냄
     const params = body.action?.params || {};
     const detailParams = body.action?.detailParams || {};
+    const clientExtra = body.action?.clientExtra || {};
 
+    // 세 곳 모두 확인해서 값 추출
     const getParam = (key: string): string => {
       if (params[key]) return params[key];
       if (detailParams[key]?.value) return detailParams[key].value;
+      if (clientExtra[key]) return clientExtra[key];
       return "";
     };
 
