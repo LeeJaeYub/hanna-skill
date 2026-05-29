@@ -15,10 +15,11 @@ Deno.serve(async (request: Request) => {
     const body = await request.json();
     console.log("받은 데이터:", JSON.stringify(body));
 
+    // 오픈빌더는 params 또는 detailParams에 값을 담아 보냄
     const params = body.action?.params || {};
     const detailParams = body.action?.detailParams || {};
 
-    // params, detailParams 둘 다 확인
+    // 두 곳 모두 확인해서 값 추출
     const getParam = (key: string): string => {
       if (params[key]) return params[key];
       if (detailParams[key]?.value) return detailParams[key].value;
@@ -31,7 +32,7 @@ Deno.serve(async (request: Request) => {
 
     console.log("product:", product, "deadline:", deadline, "design:", design);
 
-    // Apps Script로 저장 + 주문번호 받기
+    // Apps Script에 저장 요청 + 주문번호 받기
     const completeRes = await fetch(SHEET_URL, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -65,4 +66,10 @@ Deno.serve(async (request: Request) => {
       JSON.stringify({
         version: "2.0",
         template: {
-          outputs: [{ simpleText: { text: "접수가
+          outputs: [{ simpleText: { text: "접수가 완료됐어요! 디자이너가 곧 연락드릴게요 😊" } }],
+        },
+      }),
+      { headers: { "Content-Type": "application/json" } }
+    );
+  }
+});
