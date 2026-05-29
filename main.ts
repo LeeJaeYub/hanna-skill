@@ -1,4 +1,4 @@
-const kv = await Deno.openKv();
+const SHEET_URL = "https://script.google.com/macros/s/AKfycbwvBcznAjqsF05Qkez6K57mODpZWZv31UswSKv2p2ElOXeF29pksAq3G4jwgEurNVij/exec";
 
 Deno.serve(async (request: Request) => {
   if (request.method === "OPTIONS") {
@@ -19,47 +19,41 @@ Deno.serve(async (request: Request) => {
     const clientExtra = body.action?.clientExtra || {};
     const blockName = body.userRequest?.block?.name || "";
 
-    // 기존 세션 불러오기
-    const sessionEntry = await kv.get(["session", userId]);
-    const session: Record<string, string> =
-      (sessionEntry.value as Record<string, string>) || {};
+    console.log("블록명:", blockName);
+    console.log("clientExtra:", JSON.stringify(clientExtra));
 
-    // 값 누적 저장
-    if (clientExtra.product) session.product = clientExtra.product;
-    if (clientExtra.deadline) session.deadline = clientExtra.deadline;
-    if (clientExtra.design) session.design = clientExtra.design;
-
-    await kv.set(["session", userId], session, { expireIn: 3600000 });
-    console.log("현재 세션:", JSON.stringify(session));
-
-    // 접수완료 블록에서만 최종 처리
     if (blockName === "접수완료") {
-      const product = session.product || "미입력";
-      const deadline = session.deadline || "해당없음";
-      const design = session.design || "미입력";
+      // 마지막 블록: design 저장 후 complete 호출
+      // 먼저 design 값을 세션에 저장
+      if (clientExtra.design) {
+        await fetch(SHEET_URL, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            action: "save",
+            userId,
+            design: clientExtra.design,
+          }),
+        });
+      }
 
-      const now = new Date();
-      const kst = new Date(now.getTime() + 9 * 60 * 60 * 1000);
-      const dateStr = kst.toISOString().slice(2, 10).replace(/-/g, "");
-      const seq = String(Math.floor(Math.random() * 999) + 1).padStart(3, "0");
-      const orderNum = "#" + dateStr + "-" + seq;
-      const dateTime = kst.toISOString().slice(0, 16).replace("T", " ");
-
-      const sheetUrl = "https://script.google.com/macros/s/AKfycbwvBcznAjqsF05Qkez6K57mODpZWZv31UswSKv2p2ElOXeF29pksAq3G4jwgEurNVij/exec";
-      fetch(sheetUrl, {
+      // 세션에서 전체 데이터 꺼내서 최종 저장
+      const completeRes = await fetch(SHEET_URL, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          주문번호: orderNum,
-          날짜: dateTime,
-          상품: product,
-          납기일: deadline,
-          디자인파일: design,
-          상태: "접수완료",
+          action: "complete",
+          userId,
         }),
       });
 
-      await kv.delete(["session", userId]);
+      const result = await completeRes.json();
+      console.log("최종 결과:", JSON.stringify(result));
+
+      const orderNum = result.orderNum || "오류";
+      const product = result.product || "-";
+      const deadline = result.deadline || "-";
+      const design = result.design || "-";
 
       const text = `접수됐어요! 🎉\n주문번호 ${orderNum}\n\n📦 상품: ${product}\n📅 납기일: ${deadline}\n🎨 디자인: ${design}\n\n디자이너가 곧 연락드릴게요!\n연락받으실 번호를 채팅으로 보내주세요 😊`;
 
@@ -72,7 +66,19 @@ Deno.serve(async (request: Request) => {
       );
 
     } else {
-      // 중간 블록: 눈에 안 보이는 공백 문자로 응답
+      // 중간 블록: clientExtra 값을 Apps Script 세션에 저장
+      const saveData: Record<string, string> = { action: "save", userId };
+      if (clientExtra.product) saveData.product = clientExtra.product;
+      if (clientExtra.deadline) saveData.deadline = clientExtra.deadline;
+      if (clientExtra.design) saveData.design = clientExtra.design;
+
+      await fetch(SHEET_URL, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(saveData),
+      });
+
+      // 눈에 안 보이는 공백 문자로 응답 (오류 없이 다음 블록으로 이동)
       return new Response(
         JSON.stringify({
           version: "2.0",
