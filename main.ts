@@ -23,8 +23,7 @@ Deno.serve(async (request: Request) => {
     console.log("clientExtra:", JSON.stringify(clientExtra));
 
     if (blockName === "접수완료") {
-      // 마지막 블록: design 저장 후 complete 호출
-      // 먼저 design 값을 세션에 저장
+      // 접수완료 블록: design 값 먼저 저장 (await 사용 - 이 값이 있어야 complete 가능)
       if (clientExtra.design) {
         await fetch(SHEET_URL, {
           method: "POST",
@@ -37,7 +36,7 @@ Deno.serve(async (request: Request) => {
         });
       }
 
-      // 세션에서 전체 데이터 꺼내서 최종 저장
+      // 세션에서 전체 데이터 꺼내서 최종 저장 + 주문번호 받기
       const completeRes = await fetch(SHEET_URL, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -66,19 +65,21 @@ Deno.serve(async (request: Request) => {
       );
 
     } else {
-      // 중간 블록: clientExtra 값을 Apps Script 세션에 저장
+      // 중간 블록(납기일, 디자인여부): 값을 세션에 저장
+      // await 없이 백그라운드로 저장 → 즉시 응답 반환해서 5초 타임아웃 방지
       const saveData: Record<string, string> = { action: "save", userId };
       if (clientExtra.product) saveData.product = clientExtra.product;
       if (clientExtra.deadline) saveData.deadline = clientExtra.deadline;
       if (clientExtra.design) saveData.design = clientExtra.design;
 
-      await fetch(SHEET_URL, {
+      fetch(SHEET_URL, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(saveData),
       });
 
-      // 눈에 안 보이는 공백 문자로 응답 (오류 없이 다음 블록으로 이동)
+      // \u200b = 눈에 안 보이는 공백 문자
+      // 완전히 빈 문자열이면 오픈빌더가 오류를 내므로 이 문자로 대체
       return new Response(
         JSON.stringify({
           version: "2.0",
